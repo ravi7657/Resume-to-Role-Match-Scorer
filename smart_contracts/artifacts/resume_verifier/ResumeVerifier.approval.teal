@@ -1,0 +1,308 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 1 32 0 8
+    bytecblock "admin" "min_fee" 0x151f7c75
+    // smart_contracts/resume_verifier/contract.py:72
+    // class ResumeVerifier(ARC4Contract):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    bz main_create_NoOp@10
+    pushbytess 0x1f52198e 0x2bf914bb 0x851eb223 0x0d131751 // method "register_attestation(byte[32],string,uint64,pay)string", method "get_attestation(address,byte[32])(string,uint64,uint64,uint64)", method "verify_resume_hash(address,byte[32])bool", method "withdraw_fees(uint64)void"
+    txna ApplicationArgs 0
+    match register_attestation get_attestation verify_resume_hash withdraw_fees
+    err
+
+main_create_NoOp@10:
+    // smart_contracts/resume_verifier/contract.py:72
+    // class ResumeVerifier(ARC4Contract):
+    pushbytes 0xa0cadf8a // method "bootstrap(uint64)void"
+    txna ApplicationArgs 0
+    match bootstrap
+    err
+
+
+// smart_contracts.resume_verifier.contract.ResumeVerifier.bootstrap[routing]() -> void:
+bootstrap:
+    // smart_contracts/resume_verifier/contract.py:95
+    // @abimethod(create="require")
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/resume_verifier/contract.py:105
+    // self.admin.value = Txn.sender
+    bytec_0 // "admin"
+    txn Sender
+    app_global_put
+    // smart_contracts/resume_verifier/contract.py:106
+    // self.min_fee.value = min_fee
+    bytec_1 // "min_fee"
+    swap
+    app_global_put
+    // smart_contracts/resume_verifier/contract.py:95
+    // @abimethod(create="require")
+    intc_0 // 1
+    return
+
+
+// smart_contracts.resume_verifier.contract.ResumeVerifier.register_attestation[routing]() -> void:
+register_attestation:
+    // smart_contracts/resume_verifier/contract.py:112
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    intc_2 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_3 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    txn GroupIndex
+    intc_0 // 1
+    -
+    dup
+    gtxns TypeEnum
+    intc_0 // pay
+    ==
+    assert // transaction type is pay
+    // smart_contracts/resume_verifier/contract.py:153
+    // payment.receiver == Global.current_application_address
+    dup
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/resume_verifier/contract.py:150-154
+    // # --- Payment receiver validation ---
+    // # The payment MUST go to this specific contract, not any other address.
+    // assert (
+    //     payment.receiver == Global.current_application_address
+    // ), "Payment receiver must be this contract's address"
+    assert // Payment receiver must be this contract's address
+    // smart_contracts/resume_verifier/contract.py:160
+    // payment.amount >= self.min_fee.value
+    gtxns Amount
+    intc_2 // 0
+    bytec_1 // "min_fee"
+    app_global_get_ex
+    assert // check self.min_fee exists
+    dig 1
+    <=
+    // smart_contracts/resume_verifier/contract.py:156-161
+    // # --- Payment amount validation ---
+    // # The payment MUST meet the minimum fee set at bootstrap time.
+    // # fee_paid stores the real amount from the actual PaymentTxn — not a boolean.
+    // assert (
+    //     payment.amount >= self.min_fee.value
+    // ), "Payment amount is below the minimum attestation fee"
+    assert // Payment amount is below the minimum attestation fee
+    // smart_contracts/resume_verifier/contract.py:163-164
+    // # --- Score range validation ---
+    // assert match_score.as_uint64() <= UInt64(100), "Match score must be between 0 and 100"
+    dig 1
+    btoi
+    pushint 100
+    <=
+    assert // Match score must be between 0 and 100
+    // smart_contracts/resume_verifier/contract.py:166-169
+    // # --- Construct box key ---
+    // # Key = applicant wallet address bytes (32) + resume SHA-256 hash bytes (32) = 64 bytes
+    // # This uniquely identifies each (applicant, resume) attestation.
+    // box_key = Txn.sender.bytes + resume_hash.bytes
+    txn Sender
+    uncover 4
+    concat
+    // smart_contracts/resume_verifier/contract.py:176
+    // attestation_round=arc4UInt64(Global.round),
+    global Round
+    itob
+    // smart_contracts/resume_verifier/contract.py:177
+    // fee_paid=arc4UInt64(payment.amount),  # Real µALGO from the PaymentTxn — not a flag
+    uncover 2
+    itob
+    // smart_contracts/resume_verifier/contract.py:171-178
+    // # --- Write attestation record to Box Storage ---
+    // # Overwrites any existing record for this key (safe — allows re-attestation).
+    // self.attestations[box_key] = AttestationRecord(
+    //     role_id=role_id,
+    //     match_score=match_score,
+    //     attestation_round=arc4UInt64(Global.round),
+    //     fee_paid=arc4UInt64(payment.amount),  # Real µALGO from the PaymentTxn — not a flag
+    // )
+    pushbytes 0x001a
+    uncover 4
+    concat
+    uncover 2
+    concat
+    swap
+    concat
+    uncover 2
+    concat
+    dig 1
+    box_del
+    pop
+    box_put
+    // smart_contracts/resume_verifier/contract.py:112
+    // @abimethod()
+    pushbytes 0x151f7c7500084154544553544544
+    log
+    intc_0 // 1
+    return
+
+
+// smart_contracts.resume_verifier.contract.ResumeVerifier.get_attestation[routing]() -> void:
+get_attestation:
+    // smart_contracts/resume_verifier/contract.py:186
+    // @abimethod(readonly=True)
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_1 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/resume_verifier/contract.py:205
+    // box_key = applicant.bytes + resume_hash.bytes
+    concat
+    // smart_contracts/resume_verifier/contract.py:207
+    // box_key in self.attestations
+    dup
+    box_len
+    bury 1
+    // smart_contracts/resume_verifier/contract.py:206-208
+    // assert (
+    //     box_key in self.attestations
+    // ), "No attestation found for this applicant and resume hash"
+    assert // No attestation found for this applicant and resume hash
+    // smart_contracts/resume_verifier/contract.py:209
+    // return self.attestations[box_key].copy()
+    box_get
+    pop
+    // smart_contracts/resume_verifier/contract.py:186
+    // @abimethod(readonly=True)
+    bytec_2 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_0 // 1
+    return
+
+
+// smart_contracts.resume_verifier.contract.ResumeVerifier.verify_resume_hash[routing]() -> void:
+verify_resume_hash:
+    // smart_contracts/resume_verifier/contract.py:211
+    // @abimethod(readonly=True)
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_1 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_1 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/resume_verifier/contract.py:230
+    // box_key = applicant.bytes + resume_hash.bytes
+    concat
+    // smart_contracts/resume_verifier/contract.py:231
+    // return Bool(box_key in self.attestations)
+    box_len
+    bury 1
+    pushbytes 0x00
+    intc_2 // 0
+    uncover 2
+    setbit
+    // smart_contracts/resume_verifier/contract.py:211
+    // @abimethod(readonly=True)
+    bytec_2 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_0 // 1
+    return
+
+
+// smart_contracts.resume_verifier.contract.ResumeVerifier.withdraw_fees[routing]() -> void:
+withdraw_fees:
+    // smart_contracts/resume_verifier/contract.py:237
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/resume_verifier/contract.py:251
+    // assert Txn.sender == self.admin.value, "Only the admin may withdraw fees"
+    txn Sender
+    intc_2 // 0
+    bytec_0 // "admin"
+    app_global_get_ex
+    assert // check self.admin exists
+    swap
+    dig 1
+    ==
+    assert // Only the admin may withdraw fees
+    // smart_contracts/resume_verifier/contract.py:253-258
+    // # Inner transaction: contract account → admin
+    // itxn.Payment(
+    //     receiver=self.admin.value,
+    //     amount=amount,
+    //     fee=Global.min_txn_fee,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/resume_verifier/contract.py:257
+    // fee=Global.min_txn_fee,
+    global MinTxnFee
+    uncover 2
+    itxn_field Amount
+    swap
+    itxn_field Receiver
+    // smart_contracts/resume_verifier/contract.py:253-254
+    // # Inner transaction: contract account → admin
+    // itxn.Payment(
+    intc_0 // pay
+    itxn_field TypeEnum
+    itxn_field Fee
+    // smart_contracts/resume_verifier/contract.py:253-258
+    // # Inner transaction: contract account → admin
+    // itxn.Payment(
+    //     receiver=self.admin.value,
+    //     amount=amount,
+    //     fee=Global.min_txn_fee,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/resume_verifier/contract.py:237
+    // @abimethod()
+    intc_0 // 1
+    return
